@@ -28,6 +28,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           QT_QUICK_BACKEND: software
+          QT_QPA_FONTDIR: C:\Windows\Fonts
           PYTHONPATH: .
         run: python tests/ui_smoke.py
       - name: Render Windows icon
