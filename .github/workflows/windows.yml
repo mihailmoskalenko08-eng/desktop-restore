@@ -90,18 +90,25 @@ jobs:
           if ((Get-FileHash $data).Hash -ne $hash) { throw 'Upgrade altered the workspace data.' }
           $icon = Join-Path $destination 'DesktopRestore-v04.ico'
           if (!(Test-Path $icon)) { throw 'Custom icon was not installed.' }
-          $link = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Верни рабочий стол.lnk'
-          if (!(Test-Path $link)) { throw 'Desktop shortcut was not created.' }
-          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
-          $linkBytes = [System.IO.File]::ReadAllBytes($link)
-          $unicodeLink = [Text.Encoding]::Unicode.GetString($linkBytes)
-          $oddUnicodeLink = [Text.Encoding]::Unicode.GetString($linkBytes, 1, $linkBytes.Length - 1)
-          $ansiLink = [Text.Encoding]::ASCII.GetString($linkBytes)
-          if (($shortcut.IconLocation -split ',')[0] -ne $icon -and
-              !$unicodeLink.Contains($icon) -and !$oddUnicodeLink.Contains($icon) -and !$ansiLink.Contains($icon)) {
-            throw "Incorrect shortcut icon: $($shortcut.IconLocation)"
+          $desktop = [Environment]::GetFolderPath('DesktopDirectory')
+          $start = [Environment]::GetFolderPath('Programs')
+          $links = @(
+            (Join-Path $desktop 'Верни рабочий стол.lnk'),
+            (Join-Path $start 'Верни рабочий стол\Верни рабочий стол.lnk')
+          )
+          $shell = New-Object -ComObject WScript.Shell
+          $index = 0
+          foreach ($link in $links) {
+            if (!(Test-Path -LiteralPath $link)) { throw "Shortcut was not created: $link" }
+            # WScript.Shell can misread link filenames containing Cyrillic on an English runner.
+            $inspectionLink = Join-Path $env:RUNNER_TEMP "DesktopRestore-inspect-$index.lnk"
+            Copy-Item -LiteralPath $link -Destination $inspectionLink
+            $shortcut = $shell.CreateShortcut($inspectionLink)
+            $installedIcon = [Environment]::ExpandEnvironmentVariables(($shortcut.IconLocation -split ',')[0])
+            if ($installedIcon -ne $icon) { throw "Incorrect shortcut icon: $($shortcut.IconLocation)" }
+            if ($shortcut.TargetPath -ne (Join-Path $destination 'DesktopRestore.exe')) { throw "Incorrect shortcut target: $($shortcut.TargetPath)" }
+            $index++
           }
-          if ($shortcut.TargetPath -ne (Join-Path $destination 'DesktopRestore.exe')) { throw 'Desktop shortcut missing its target.' }
           $env:QT_QPA_PLATFORM = 'offscreen'
           $env:QT_QUICK_BACKEND = 'software'
           $app = Start-Process -FilePath (Join-Path $destination 'DesktopRestore.exe') -ArgumentList '--smoke-test' -PassThru
