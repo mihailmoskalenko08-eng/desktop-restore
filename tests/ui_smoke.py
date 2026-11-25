@@ -57,6 +57,38 @@ def run():
             click_item(visible_text(text))
             QTest.qWait(240)
 
+        def contrast(foreground, background):
+            def luminance(shade):
+                def linear(value):
+                    return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+                return sum(weight * linear(channel) for weight, channel in zip(
+                    (0.2126, 0.7152, 0.0722), shade.getRgbF()[:3]
+                ))
+            low, high = sorted((luminance(foreground), luminance(background)))
+            return (high + 0.05) / (low + 0.05)
+
+        def expect_text_contrast(button):
+            label = button.property("contentItem")
+            surface = button.property("background")
+            assert contrast(label.property("color"), surface.property("color")) >= 4.5
+
+        primary = next(item for item in visible_items() if item.property("text") == "Открыть всё"
+                       and item.property("primary"))
+        backend.setMotion(False)
+        for appearance in ("dark", "light"):
+            backend.setAppearance(appearance)
+            for value in ("#000000", "#ffffff", "#777777", "#07368f", "#fce2a2"):
+                backend.chooseColor(value)
+                expect_text_contrast(primary)
+                assert contrast(window.property("muted"), window.property("paper")) >= 4.5
+                assert contrast(window.property("muted"), window.property("panel")) >= 4.5
+            backend.select(data["groups"][1]["id"])
+            assert not primary.isEnabled()
+            expect_text_contrast(primary)
+            backend.select(data["groups"][0]["id"])
+        backend.setAccent(0)
+        backend.setMotion(True)
+
         search = window.findChild(QObject, "resourceSearch")
         QTest.keyClick(window, Qt.Key.Key_K, Qt.KeyboardModifier.ControlModifier)
         assert search.hasActiveFocus()
@@ -79,7 +111,29 @@ def run():
         assert backend.accent == 11
         click("Тёмное")
         assert backend.dark
-        backend.chooseColor("#EC7010")
+        click("Свой цвет…")
+        hex_input = window.findChild(QObject, "accentHex")
+        assert hex_input.hasActiveFocus()
+        pad = next(item for item in visible_items() if item.objectName() == "colorPad")
+        previous_hex = hex_input.property("text")
+        click_item(pad)
+        assert hex_input.property("text") != previous_hex
+        click("Отмена")
+        assert backend.accent == 11
+
+        click("Свой цвет…")
+        def paste_hex(value):
+            hex_input.forceActiveFocus()
+            qt.clipboard().setText(value)
+            QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+            QTest.keyClick(window, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+
+        paste_hex("#B0")
+        assert not visible_text("Применить").isEnabled()
+        paste_hex("#EC7010")
+        preview = next(item for item in visible_items() if item.objectName() == "accentPreview")
+        assert preview.property("color").name() == "#ec7010", (hex_input.property("text"), preview.property("color").name(), messages)
+        click("Применить")
         assert backend.accent == -1 and backend.customColor == "#ec7010"
         persisted = Controller(store, store.load())
         assert persisted.dark and persisted.customColor == "#ec7010"
