@@ -1,6 +1,7 @@
 """Qt Quick interface and bridge to the local workspace store."""
 
 import json
+import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -40,7 +41,7 @@ def start_apps():
     return list(unique.values())
 
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 
 class Controller(QObject):
@@ -57,7 +58,10 @@ class Controller(QObject):
         self.settings = QSettings("DesktopRestore", "DesktopRestore")
         legacy = "dark" if self.settings.value("dark", False, type=bool) else "light"
         self._appearance = self.settings.value("appearance", legacy, type=str)
-        self._accent = max(0, min(3, self.settings.value("accent", 0, type=int)))
+        self._accent = max(-1, min(11, self.settings.value("accent", 0, type=int)))
+        self._custom_color = self.settings.value("customColor", "#7568da", type=str)
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", self._custom_color):
+            self._custom_color = "#7568da"
         self._motion = self.settings.value("motion", True, type=bool)
         QApplication.styleHints().colorSchemeChanged.connect(self.settingsChanged)
         self._apps, self._app_status = [], ""
@@ -117,6 +121,10 @@ class Controller(QObject):
     def accent(self):
         return self._accent
 
+    @Property(str, notify=settingsChanged)
+    def customColor(self):
+        return self._custom_color
+
     @Property(bool, notify=settingsChanged)
     def motion(self):
         return self._motion
@@ -160,9 +168,18 @@ class Controller(QObject):
 
     @Slot(int)
     def setAccent(self, value):
-        if 0 <= value <= 3:
+        if 0 <= value <= 11:
             self._accent = value
             self.settings.setValue("accent", value)
+            self.settingsChanged.emit()
+
+    @Slot(str)
+    def chooseColor(self, value):
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            self._accent = -1
+            self._custom_color = value.lower()
+            self.settings.setValue("accent", -1)
+            self.settings.setValue("customColor", self._custom_color)
             self.settingsChanged.emit()
 
     @Slot(bool)
