@@ -1,0 +1,14 @@
+Desktop Restore includes Qt 6.8.3, PySide6 6.8.3 and Shiboken6 6.8.3,
+distributed under the GNU Lesser General Public License version 3.
+Copyright The Qt Company Ltd. and other contributors. The applicable
+LGPL and GPL license texts are included in this directory.
+
+Corresponding upstream source code for these unmodified libraries:
+Qt: https://download.qt.io/official_releases/qt/6.8/6.8.3/single/qt-everywhere-src-6.8.3.tar.xz.mirrorlist
+PySide6 and Shiboken6: https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.8.3-src/
+
+The shared libraries are installed as separate files under the application's
+_internal directory. You can replace them with compatible versions. These
+license terms permit reverse engineering to debug your modifications to them.
+
+Python is included under the license found in Python.txt.
