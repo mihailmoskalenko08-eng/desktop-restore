@@ -1,358 +1,296 @@
-"""Desktop front end for «Верни рабочий стол»."""
+"""Qt Quick interface and bridge to the local workspace store."""
 
-import tkinter as tk
+import json
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from pathlib import Path
 
-from workspaces import RESOURCE_TYPES, WorkspaceStore, data_file, launch, new_group, validate_target
+from PySide6.QtCore import QObject, Property, QSettings, Qt, QUrl, Signal, Slot
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-
-class ResourceDialog(simpledialog.Dialog):
-    def __init__(self, parent, item=None):
-        self.initial = item or {"kind": "Сайт", "name": "", "target": ""}
-        super().__init__(parent, "Редактировать ресурс" if item else "Добавить ресурс")
-
-    def body(self, frame):
-        self.kind = tk.StringVar(value=self.initial["kind"])
-        self.name = tk.StringVar(value=self.initial["name"])
-        self.target = tk.StringVar(value=self.initial["target"])
-        self.arguments = tk.StringVar(value=self.initial.get("arguments", ""))
-        frame.columnconfigure(1, weight=1)
-        ttk.Label(frame, text="Тип").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        kinds = ttk.Combobox(frame, state="readonly", values=RESOURCE_TYPES, textvariable=self.kind)
-        kinds.grid(row=0, column=1, sticky="ew", padx=6, pady=6)
-        kinds.bind("<<ComboboxSelected>>", self.update_browse)
-        ttk.Label(frame, text="Название").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        name = ttk.Entry(frame, textvariable=self.name, width=48)
-        name.grid(row=1, column=1, sticky="ew", padx=6, pady=6)
-        ttk.Label(frame, text="Адрес или путь").grid(row=2, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(frame, textvariable=self.target).grid(row=2, column=1, sticky="ew", padx=6, pady=6)
-        self.browse_button = ttk.Button(frame, text="Обзор…", command=self.browse)
-        self.browse_button.grid(row=2, column=2, padx=6, pady=6)
-        self.arguments_label = ttk.Label(frame, text="Аргументы запуска")
-        self.arguments_label.grid(row=3, column=0, sticky="w", padx=6, pady=6)
-        self.arguments_entry = ttk.Entry(frame, textvariable=self.arguments)
-        self.arguments_entry.grid(row=3, column=1, sticky="ew", padx=6, pady=6)
-        self.update_browse()
-        return name
-
-    def buttonbox(self):
-        buttons = ttk.Frame(self, padding=(12, 4, 12, 12))
-        buttons.pack(fill="x")
-        ttk.Button(buttons, text="Отмена", command=self.cancel).pack(side="right")
-        ttk.Button(buttons, text="Сохранить", command=self.ok).pack(side="right", padx=6)
-        self.bind("<Return>", self.ok)
-        self.bind("<Escape>", self.cancel)
-
-    def update_browse(self, _event=None):
-        kind = self.kind.get()
-        self.browse_button.configure(state="disabled" if kind == "Сайт" else "normal")
-        for widget in (self.arguments_label, self.arguments_entry):
-            if kind == "Программа":
-                widget.grid()
-            else:
-                widget.grid_remove()
-
-    def browse(self):
-        kind = self.kind.get()
-        if kind == "Папка":
-            target = filedialog.askdirectory(parent=self)
-        else:
-            options = {}
-            if kind == "Программа":
-                options["filetypes"] = [("Программы и ярлыки", "*.exe *.lnk"), ("Все файлы", "*.*")]
-            target = filedialog.askopenfilename(parent=self, **options)
-        if target:
-            self.target.set(target)
-
-    def validate(self):
-        try:
-            validate_target(self.kind.get(), self.target.get().strip())
-        except (ValueError, OSError) as error:
-            messagebox.showwarning("Проверь ресурс", str(error), parent=self)
-            return False
-        return True
-
-    def apply(self):
-        target = self.target.get().strip()
-        self.result = {"kind": self.kind.get(), "name": self.name.get().strip() or target, "target": target}
-        if self.kind.get() == "Программа":
-            self.result["arguments"] = self.arguments.get().strip()
+from workspaces import WorkspaceStore, data_file, launch, new_group, validate_target
 
 
-class DesktopRestore:
-    def __init__(self, root, store, data):
-        self.root = root
-        self.store = store
-        self.data = data
-        self.groups = {}
-        self.selected_id = None
-        self.root.title("Верни рабочий стол")
-        self.root.geometry("1040x650")
-        self.root.minsize(820, 480)
-        self.build_ui()
-        self.refresh_tree(self.data["selected"])
-        self.root.bind("<Control-n>", lambda _event: self.add_group(False))
+def start_apps():
+    if sys.platform != "win32":
+        return []
+    command = (
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+        "$ErrorActionPreference = 'Stop'; "
+        "Get-StartApps | Sort-Object Name | Select-Object Name, AppID | ConvertTo-Json -Compress"
+    )
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True, encoding="utf-8", errors="replace", check=True, timeout=20,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    entries = json.loads(result.stdout or "[]") or []
+    if isinstance(entries, dict):
+        entries = [entries]
+    unique = {}
+    for row in entries:
+        name, target = row.get("Name"), row.get("AppID")
+        if name and target:
+            unique.setdefault(target.casefold(), {"name": name, "target": target})
+    return list(unique.values())
 
-    def build_ui(self):
-        style = ttk.Style(self.root)
-        style.configure("Title.TLabel", font=("Segoe UI", 23, "bold"))
-        style.configure("Section.TLabel", font=("Segoe UI", 14, "bold"))
-        style.configure("Treeview", rowheight=30)
 
-        header = ttk.Frame(self.root, padding=(24, 20, 24, 16))
-        header.pack(fill="x")
-        ttk.Label(header, text="Верни рабочий стол", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(header, text="Собери программы, файлы и сайты для каждого занятия.").pack(anchor="w", pady=(4, 0))
+class Controller(QObject):
+    changed = Signal()
+    toast = Signal(str)
+    appsChanged = Signal()
+    discoveryDone = Signal(list, str)
 
-        panels = ttk.Panedwindow(self.root, orient="horizontal")
-        panels.pack(fill="both", expand=True, padx=24)
-        sidebar = ttk.Frame(panels, padding=(0, 0, 12, 0), width=275)
-        content = ttk.Frame(panels, padding=(12, 0, 0, 0), width=560)
-        panels.add(sidebar, weight=0)
-        panels.add(content, weight=1)
+    def __init__(self, store, data):
+        super().__init__()
+        self.store, self.data = store, data
+        self.settings = QSettings("DesktopRestore", "DesktopRestore")
+        self._dark = self.settings.value("dark", False, type=bool)
+        self._apps, self._app_status = [], ""
+        self._loaded = False
+        self._pool = ThreadPoolExecutor(max_workers=1)
+        self.discoveryDone.connect(self.receive_apps, Qt.ConnectionType.QueuedConnection)
 
-        ttk.Label(sidebar, text="Рабочие наборы", style="Section.TLabel").pack(anchor="w", pady=(0, 10))
-        groups = ttk.Frame(sidebar)
-        groups.pack(fill="both", expand=True)
-        self.tree = ttk.Treeview(groups, show="tree", selectmode="browse")
-        self.tree.column("#0", width=245, minwidth=100, stretch=True)
-        scroll = ttk.Scrollbar(groups, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        self.tree.pack(side="left", fill="both", expand=True)
-        self.tree.bind("<<TreeviewSelect>>", self.select_group)
-
-        group_actions = ttk.Frame(sidebar)
-        group_actions.pack(fill="x", pady=(10, 4))
-        ttk.Button(group_actions, text="+ Набор", command=lambda: self.add_group(False)).pack(side="left")
-        self.add_topic_button = ttk.Button(group_actions, text="+ Тема", command=lambda: self.add_group(True))
-        self.add_topic_button.pack(side="left", padx=(6, 0))
-        manage_groups = ttk.Frame(sidebar)
-        manage_groups.pack(fill="x", pady=(0, 6))
-        self.rename_button = ttk.Button(manage_groups, text="Переименовать", command=self.rename_group)
-        self.rename_button.pack(side="left")
-        self.delete_group_button = ttk.Button(manage_groups, text="Удалить", command=self.delete_group)
-        self.delete_group_button.pack(side="left", padx=(6, 0))
-
-        main_actions = ttk.Frame(content)
-        main_actions.pack(fill="x", pady=(0, 10))
-        self.open_all_button = ttk.Button(main_actions, text="Открыть всё", command=self.open_all)
-        self.open_all_button.pack(side="right")
-        self.heading = ttk.Label(main_actions, style="Section.TLabel")
-        self.heading.pack(side="left", fill="x", expand=True, padx=(0, 6))
-        self.hint = ttk.Label(content)
-        self.hint.pack(anchor="w", pady=(0, 10))
-
-        listing = ttk.Frame(content)
-        listing.pack(fill="both", expand=True)
-        self.resources = ttk.Treeview(listing, columns=("name", "kind", "target"), show="headings", selectmode="browse")
-        for key, label, width in (
-            ("name", "Название", 180), ("kind", "Тип", 100), ("target", "Адрес или путь", 280)
-        ):
-            self.resources.heading(key, text=label)
-            self.resources.column(key, width=width, minwidth=60, stretch=key != "kind")
-        scroll = ttk.Scrollbar(listing, command=self.resources.yview)
-        self.resources.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        self.resources.pack(side="left", fill="both", expand=True)
-        self.resources.bind("<<TreeviewSelect>>", lambda _event: self.update_buttons())
-        self.resources.bind("<Double-Button-1>", self.open_clicked_resource)
-        self.resources.bind("<Return>", self.open_resource)
-
-        resource_actions = ttk.Frame(content)
-        resource_actions.pack(fill="x", pady=(10, 6))
-        self.add_resource_button = ttk.Button(resource_actions, text="+ Ресурс", command=self.add_resource)
-        self.open_resource_button = ttk.Button(resource_actions, text="Открыть", command=self.open_resource)
-        self.edit_resource_button = ttk.Button(resource_actions, text="Изменить", command=self.edit_resource)
-        self.delete_resource_button = ttk.Button(resource_actions, text="Удалить", command=self.delete_resource)
-        for button in (
-            self.add_resource_button, self.open_resource_button, self.edit_resource_button, self.delete_resource_button
-        ):
-            button.pack(side="left", padx=(0, 6))
-
-        self.status = tk.StringVar()
-        ttk.Label(self.root, textvariable=self.status, padding=(24, 8, 24, 12)).pack(fill="x")
-
-    def refresh_tree(self, selected):
-        self.groups.clear()
-        self.tree.delete(*self.tree.get_children())
-
-        def insert(groups, parent=""):
+    def entries(self):
+        def walk(groups, parents=()):
             for group in groups:
-                group_id = group["id"]
-                self.groups[group_id] = (groups, group)
-                self.tree.insert(parent, "end", iid=group_id, text=group["name"], open=True)
-                insert(group["topics"], group_id)
+                trail = (*parents, group["name"])
+                yield groups, group, trail
+                yield from walk(group["topics"], trail)
+        return list(walk(self.data["groups"]))
 
-        insert(self.data["groups"])
-        self.selected_id = selected if selected in self.groups else next(iter(self.groups), None)
-        if self.selected_id:
-            self.tree.selection_set(self.selected_id)
-            self.tree.focus(self.selected_id)
-            self.tree.see(self.selected_id)
-        self.refresh_resources()
+    def current(self):
+        selected = self.data.get("selected")
+        entries = self.entries()
+        return next((entry for entry in entries if entry[1]["id"] == selected),
+                    entries[0] if entries else ([], None, ()))
 
-    def current_group(self):
-        return self.groups[self.selected_id][1] if self.selected_id else None
+    @Property("QVariantList", notify=changed)
+    def groups(self):
+        active = self.selected
+        return [{"key": group["id"], "name": group["name"], "depth": len(trail) - 1,
+                 "active": active == group["id"]} for _, group, trail in self.entries()]
 
-    def select_group(self, _event):
-        selected = self.tree.selection()
-        if not selected or selected[0] == self.selected_id:
-            return
-        previous = deepcopy(self.data)
-        self.selected_id = selected[0]
-        self.commit(previous, "Последний выбор сохранён.")
+    @Property(str, notify=changed)
+    def selected(self):
+        group = self.current()[1]
+        return group["id"] if group else ""
 
-    def refresh_resources(self):
-        self.resources.delete(*self.resources.get_children())
-        group = self.current_group()
-        self.heading.configure(text=group["name"] if group else "Выбери набор")
-        if group:
-            for index, item in enumerate(group["items"]):
-                self.resources.insert("", "end", iid=str(index), values=(item["name"], item["kind"], item["target"]))
-        if group is None:
-            hint = "Создай набор для учёбы, работы или личного проекта."
-        elif not group["items"]:
-            hint = "Добавь сайт, файл, папку или программу."
-        else:
-            hint = "Двойной щелчок открывает один ресурс."
-        self.hint.configure(text=hint)
-        self.update_buttons()
+    @Property(str, notify=changed)
+    def title(self):
+        trail = self.current()[2]
+        return trail[-1] if trail else "Рабочие наборы"
 
-    def update_buttons(self):
-        group = self.current_group()
-        has_group = group is not None
-        has_resource = bool(self.resources.selection())
-        for widgets, enabled in (
-            ((self.add_topic_button, self.rename_button, self.delete_group_button, self.add_resource_button), has_group),
-            ((self.open_all_button,), has_group and bool(group["items"])),
-            ((self.open_resource_button, self.edit_resource_button, self.delete_resource_button), has_resource),
-        ):
-            for widget in widgets:
-                widget.configure(state="normal" if enabled else "disabled")
+    @Property(str, notify=changed)
+    def trail(self):
+        return "  /  ".join(self.current()[2][:-1])
 
-    def commit(self, previous, status, *, rebuild_tree=False):
-        self.data["selected"] = self.selected_id
+    @Property(int, notify=changed)
+    def tone(self):
+        active = self.current()[2]
+        return sum(ord(char) for char in active[0]) % 4 if active else 0
+
+    @Property("QVariantList", notify=changed)
+    def resources(self):
+        group = self.current()[1]
+        return group["items"] if group else []
+
+    @Property(bool, notify=changed)
+    def dark(self):
+        return self._dark
+
+    @Property("QVariantList", notify=appsChanged)
+    def apps(self):
+        return self._apps
+
+    @Property(str, notify=appsChanged)
+    def appStatus(self):
+        return self._app_status
+
+    def save(self, previous, message=""):
         try:
             self.store.save(self.data)
         except OSError as error:
             self.data = previous
-            self.refresh_tree(previous["selected"])
-            messagebox.showerror("Не удалось сохранить", str(error), parent=self.root)
-            return
-        if rebuild_tree:
-            self.refresh_tree(self.selected_id)
+            self.toast.emit(f"Не удалось сохранить. {error}")
+            return False
+        self.changed.emit()
+        if message:
+            self.toast.emit(message)
+        return True
+
+    @Slot()
+    def toggleTheme(self):
+        self._dark = not self._dark
+        self.settings.setValue("dark", self._dark)
+        self.changed.emit()
+
+    @Slot(str)
+    def select(self, key):
+        if key != self.selected and any(group["id"] == key for _, group, _ in self.entries()):
+            previous = deepcopy(self.data)
+            self.data["selected"] = key
+            self.save(previous)
+
+    @Slot(str, str, result=bool)
+    def groupAction(self, mode, name):
+        name = name.strip()
+        group = self.current()[1]
+        if not name or (mode in ("rename", "topic") and not group):
+            return False
+        previous = deepcopy(self.data)
+        if mode == "rename":
+            group["name"] = name
         else:
-            self.refresh_resources()
-        self.status.set(status)
+            new = new_group(name)
+            target = group["topics"] if mode == "topic" else self.data["groups"]
+            target.append(new)
+            self.data["selected"] = new["id"]
+        return self.save(previous, "Сохранено")
 
-    def add_group(self, topic):
-        parent = self.current_group()
-        if topic and parent is None:
-            return
-        title = "Новая тема" if topic else "Новый набор"
-        name = simpledialog.askstring(title, "Название", parent=self.root)
-        if not name or not name.strip():
-            return
-        previous = deepcopy(self.data)
-        group = new_group(name.strip())
-        (parent["topics"] if topic else self.data["groups"]).append(group)
-        self.selected_id = group["id"]
-        self.commit(previous, "Добавлено.", rebuild_tree=True)
-
-    def rename_group(self):
-        group = self.current_group()
-        name = simpledialog.askstring("Переименовать", "Название", initialvalue=group["name"], parent=self.root)
-        if not name or not name.strip():
-            return
-        previous = deepcopy(self.data)
-        group["name"] = name.strip()
-        self.commit(previous, "Название изменено.", rebuild_tree=True)
-
-    def delete_group(self):
-        siblings, group = self.groups[self.selected_id]
-        if not messagebox.askyesno(
-            "Удалить из приложения", f"Удалить «{group['name']}» вместе с его темами и списками ресурсов?",
-            parent=self.root,
-        ):
-            return
-        previous = deepcopy(self.data)
-        parent = self.tree.parent(self.selected_id)
-        siblings.remove(group)
-        self.selected_id = parent or None
-        if not self.selected_id and self.data["groups"]:
-            self.selected_id = self.data["groups"][0]["id"]
-        self.commit(previous, "Удалено из приложения.", rebuild_tree=True)
-
-    def resource_index(self):
-        selection = self.resources.selection()
-        return int(selection[0]) if selection else None
-
-    def add_resource(self):
-        group = self.current_group()
-        item = ResourceDialog(self.root).result
-        if item:
+    @Slot()
+    def removeGroup(self):
+        siblings, group, _ = self.current()
+        if group:
             previous = deepcopy(self.data)
-            group["items"].append(item)
-            self.commit(previous, "Ресурс добавлен.")
+            siblings.remove(group)
+            self.data["selected"] = self.selected or None
+            self.save(previous, "Удалено из приложения")
 
-    def edit_resource(self):
-        index = self.resource_index()
-        if index is None:
+    @Slot()
+    def loadApps(self):
+        if self._loaded:
             return
-        items = self.current_group()["items"]
-        item = ResourceDialog(self.root, items[index]).result
-        if item:
-            previous = deepcopy(self.data)
-            items[index] = item
-            self.commit(previous, "Ресурс изменён.")
+        self._loaded = True
+        self._app_status = "Ищу программы в меню «Пуск»…"
+        self.appsChanged.emit()
 
-    def delete_resource(self):
-        index = self.resource_index()
-        if index is None:
-            return
+        def discover():
+            try:
+                rows = start_apps()
+                self.discoveryDone.emit(rows, "" if rows else "Программы из меню «Пуск» недоступны.")
+            except (OSError, ValueError, subprocess.SubprocessError):
+                self.discoveryDone.emit([], "Не удалось прочитать меню «Пуск». Можно добавить путь вручную.")
+        self._pool.submit(discover)
+
+    @Slot(list, str)
+    def receive_apps(self, rows, status):
+        self._apps, self._app_status = rows, status
+        self._loaded = bool(rows)
+        self.appsChanged.emit()
+
+    @Slot("QVariantList", result=bool)
+    def addApps(self, keys):
+        return self.add_items([{"kind": "Приложение", **entry} for entry in self._apps if entry["target"] in keys])
+
+    def add_items(self, items):
+        group = self.current()[1]
+        if not group:
+            return False
         previous = deepcopy(self.data)
-        self.current_group()["items"].pop(index)
-        self.commit(previous, "Ресурс удалён из списка.")
+        before_count = len(group["items"])
+        existing = {(item["kind"], item["target"].casefold()) for item in group["items"]}
+        for item in items:
+            key = item["kind"], item["target"].casefold()
+            if key not in existing:
+                group["items"].append(item)
+                existing.add(key)
+        count = len(group["items"]) - before_count
+        if not count:
+            self.toast.emit("Уже добавлено")
+            return True
+        return self.save(previous, f"Добавлено: {count}")
 
-    def open_clicked_resource(self, event):
-        if self.resources.identify_row(event.y):
-            self.open_resource()
+    @Slot(int, str, str, str, str, result=bool)
+    def saveResource(self, index, kind, name, target, arguments):
+        group = self.current()[1]
+        if not group:
+            return False
+        target = target.strip().strip('"') if kind != "Сайт" else target.strip()
+        try:
+            validate_target(kind, target)
+        except (OSError, ValueError) as error:
+            self.toast.emit(str(error))
+            return False
+        fallback = target if kind == "Сайт" else (Path(target).stem or target)
+        item = {"kind": kind, "name": name.strip() or fallback, "target": target}
+        if kind == "Программа":
+            item["arguments"] = arguments.strip()
+        if index < 0:
+            return self.add_items([item])
+        previous = deepcopy(self.data)
+        group["items"][index] = item
+        return self.save(previous, "Ресурс изменён")
 
-    def open_resource(self, _event=None):
-        index = self.resource_index()
-        if index is not None:
-            self.open_items([self.current_group()["items"][index]])
+    @Slot(str, result=str)
+    def browse(self, kind):
+        if kind == "Папка":
+            return QFileDialog.getExistingDirectory(None, "Выбери папку")
+        file_filter = "Программы (*.exe *.lnk);;Все файлы (*)" if kind == "Программа" else "Все файлы (*)"
+        return QFileDialog.getOpenFileName(None, "Выбери файл", "", file_filter)[0]
 
-    def open_all(self):
-        self.open_items(self.current_group()["items"])
+    @Slot("QVariantList")
+    def dropFiles(self, urls):
+        items = []
+        for value in urls:
+            path = Path(QUrl(value).toLocalFile())
+            if not QUrl(value).isLocalFile() or not path.exists():
+                continue
+            kind = "Папка" if path.is_dir() else "Файл"
+            if path.is_file() and path.suffix.lower() in (".exe", ".lnk"):
+                kind = "Программа"
+            items.append({"kind": kind, "name": path.name, "target": str(path)})
+        if items:
+            self.add_items(items)
 
-    def open_items(self, items):
+    @Slot(int)
+    def removeResource(self, index):
+        previous = deepcopy(self.data)
+        self.current()[1]["items"].pop(index)
+        self.save(previous, "Убрано из темы")
+
+    @Slot(int)
+    def openResources(self, index):
+        items = self.resources if index < 0 else self.resources[index:index + 1]
         failures = []
         for item in items:
             try:
                 launch(item)
             except (OSError, ValueError) as error:
                 failures.append(f"{item['name']} — {error}")
-        self.status.set(f"Запущено: {len(items) - len(failures)} из {len(items)}.")
         if failures:
-            messagebox.showwarning("Некоторые ресурсы не открылись", "\n".join(failures), parent=self.root)
+            QMessageBox.warning(None, "Некоторые ресурсы не открылись", "\n".join(failures))
+        self.toast.emit(f"Открыто: {len(items) - len(failures)} из {len(items)}")
 
 
 def main():
-    root = tk.Tk()
+    QQuickStyle.setStyle("Basic")
+    app = QApplication(sys.argv)
+    app.setApplicationName("Верни рабочий стол")
     store = WorkspaceStore(data_file())
     try:
         data = store.load()
     except (OSError, ValueError) as error:
-        root.withdraw()
-        messagebox.showerror("Не удалось открыть рабочие наборы", f"{store.path}\n\n{error}", parent=root)
-        root.destroy()
-        return
-    DesktopRestore(root, store, data)
-    root.mainloop()
+        QMessageBox.critical(None, "Не удалось открыть рабочие наборы", f"{store.path}\n\n{error}")
+        return 1
+    controller = Controller(store, data)
+    engine = QQmlApplicationEngine()
+    engine.setInitialProperties({"backend": controller})
+    engine.load(QUrl.fromLocalFile(str(Path(__file__).resolve().with_name("Main.qml"))))
+    if not engine.rootObjects():
+        return 1
+    if "--smoke-test" in sys.argv:
+        app.processEvents()
+        result = 0
+    else:
+        result = app.exec()
+    del engine
+    return result
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
