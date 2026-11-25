@@ -41,7 +41,7 @@ def start_apps():
     return list(unique.values())
 
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 
 
 class Controller(QObject):
