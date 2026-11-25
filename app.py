@@ -8,6 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, QSettings, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
@@ -39,8 +40,13 @@ def start_apps():
     return list(unique.values())
 
 
+VERSION = "0.3.0"
+
+
 class Controller(QObject):
     changed = Signal()
+    structureChanged = Signal()
+    settingsChanged = Signal()
     toast = Signal(str)
     appsChanged = Signal()
     discoveryDone = Signal(list, str)
@@ -49,7 +55,11 @@ class Controller(QObject):
         super().__init__()
         self.store, self.data = store, data
         self.settings = QSettings("DesktopRestore", "DesktopRestore")
-        self._dark = self.settings.value("dark", False, type=bool)
+        legacy = "dark" if self.settings.value("dark", False, type=bool) else "light"
+        self._appearance = self.settings.value("appearance", legacy, type=str)
+        self._accent = max(0, min(3, self.settings.value("accent", 0, type=int)))
+        self._motion = self.settings.value("motion", True, type=bool)
+        QApplication.styleHints().colorSchemeChanged.connect(self.settingsChanged)
         self._apps, self._app_status = [], ""
         self._loaded = False
         self._pool = ThreadPoolExecutor(max_workers=1)
@@ -69,11 +79,10 @@ class Controller(QObject):
         return next((entry for entry in entries if entry[1]["id"] == selected),
                     entries[0] if entries else ([], None, ()))
 
-    @Property("QVariantList", notify=changed)
+    @Property("QVariantList", notify=structureChanged)
     def groups(self):
-        active = self.selected
-        return [{"key": group["id"], "name": group["name"], "depth": len(trail) - 1,
-                 "active": active == group["id"]} for _, group, trail in self.entries()]
+        return [{"key": group["id"], "name": group["name"], "depth": len(trail) - 1}
+                for _, group, trail in self.entries()]
 
     @Property(str, notify=changed)
     def selected(self):
@@ -89,19 +98,36 @@ class Controller(QObject):
     def trail(self):
         return "  /  ".join(self.current()[2][:-1])
 
-    @Property(int, notify=changed)
-    def tone(self):
-        active = self.current()[2]
-        return sum(ord(char) for char in active[0]) % 4 if active else 0
-
     @Property("QVariantList", notify=changed)
     def resources(self):
         group = self.current()[1]
         return group["items"] if group else []
 
-    @Property(bool, notify=changed)
+    @Property(bool, notify=settingsChanged)
     def dark(self):
-        return self._dark
+        if self._appearance == "system":
+            return QApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        return self._appearance == "dark"
+
+    @Property(str, notify=settingsChanged)
+    def appearance(self):
+        return self._appearance
+
+    @Property(int, notify=settingsChanged)
+    def accent(self):
+        return self._accent
+
+    @Property(bool, notify=settingsChanged)
+    def motion(self):
+        return self._motion
+
+    @Property(str, constant=True)
+    def version(self):
+        return VERSION
+
+    @Property(str, constant=True)
+    def dataPath(self):
+        return str(self.store.path)
 
     @Property("QVariantList", notify=appsChanged)
     def apps(self):
@@ -111,23 +137,39 @@ class Controller(QObject):
     def appStatus(self):
         return self._app_status
 
-    def save(self, previous, message=""):
+    def save(self, previous, message="", *, structure=False):
         try:
             self.store.save(self.data)
         except OSError as error:
             self.data = previous
             self.toast.emit(f"Не удалось сохранить. {error}")
             return False
+        if structure:
+            self.structureChanged.emit()
         self.changed.emit()
         if message:
             self.toast.emit(message)
         return True
 
-    @Slot()
-    def toggleTheme(self):
-        self._dark = not self._dark
-        self.settings.setValue("dark", self._dark)
-        self.changed.emit()
+    @Slot(str)
+    def setAppearance(self, value):
+        if value in ("light", "dark", "system"):
+            self._appearance = value
+            self.settings.setValue("appearance", value)
+            self.settingsChanged.emit()
+
+    @Slot(int)
+    def setAccent(self, value):
+        if 0 <= value <= 3:
+            self._accent = value
+            self.settings.setValue("accent", value)
+            self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setMotion(self, value):
+        self._motion = value
+        self.settings.setValue("motion", value)
+        self.settingsChanged.emit()
 
     @Slot(str)
     def select(self, key):
@@ -150,7 +192,7 @@ class Controller(QObject):
             target = group["topics"] if mode == "topic" else self.data["groups"]
             target.append(new)
             self.data["selected"] = new["id"]
-        return self.save(previous, "Сохранено")
+        return self.save(previous, "Сохранено", structure=True)
 
     @Slot()
     def removeGroup(self):
@@ -159,7 +201,7 @@ class Controller(QObject):
             previous = deepcopy(self.data)
             siblings.remove(group)
             self.data["selected"] = self.selected or None
-            self.save(previous, "Удалено из приложения")
+            self.save(previous, "Удалено из приложения", structure=True)
 
     @Slot()
     def loadApps(self):
@@ -271,6 +313,9 @@ def main():
     QQuickStyle.setStyle("Basic")
     app = QApplication(sys.argv)
     app.setApplicationName("Верни рабочий стол")
+    app.setApplicationVersion(VERSION)
+    asset_root = Path(__file__).resolve().parent
+    app.setWindowIcon(QIcon(str(asset_root / "app-icon.svg")))
     store = WorkspaceStore(data_file())
     try:
         data = store.load()
@@ -280,7 +325,7 @@ def main():
     controller = Controller(store, data)
     engine = QQmlApplicationEngine()
     engine.setInitialProperties({"backend": controller})
-    engine.load(QUrl.fromLocalFile(str(Path(__file__).resolve().with_name("Main.qml"))))
+    engine.load(QUrl.fromLocalFile(str(asset_root / "Main.qml")))
     if not engine.rootObjects():
         return 1
     if "--smoke-test" in sys.argv:
