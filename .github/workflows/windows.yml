@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the installer as v0.4.0
+        description: Publish the installer as v0.4.1
         type: boolean
         default: false
   push:
@@ -71,8 +71,8 @@ jobs:
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'DesktopRestore-InstallTest'
           $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=desktopicon', ('/DIR="' + $destination + '"'))
-          $old = Join-Path $env:RUNNER_TEMP 'DesktopRestore-v03-Setup.exe'
-          $oldUrl = 'https://github.com/mihailmoskalenko08-eng/desktop-restore/releases/download/v0.3.0/DesktopRestore-Setup.exe'
+          $old = Join-Path $env:RUNNER_TEMP 'DesktopRestore-v04-Setup.exe'
+          $oldUrl = 'https://github.com/mihailmoskalenko08-eng/desktop-restore/releases/download/v0.4.0/DesktopRestore-Setup.exe'
           Invoke-WebRequest $oldUrl -OutFile $old
           $previous = Start-Process -FilePath $old -ArgumentList $arguments -Wait -PassThru
           if ($previous.ExitCode -ne 0) { throw "Previous installation failed: $($previous.ExitCode)" }
@@ -141,5 +141,5 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             gh release create "$GITHUB_REF_NAME" DesktopRestore-Setup.exe --verify-tag --generate-notes
           else
-            gh release create v0.4.0 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
+            gh release create v0.4.1 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
           fi
