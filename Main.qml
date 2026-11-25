@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 
@@ -14,19 +15,25 @@ ApplicationWindow {
     title: "Верни рабочий стол"
 
     readonly property bool dark: backend.dark
-    readonly property color paper: dark ? "#151418" : "#f5f1eb"
-    readonly property color panel: dark ? "#201f25" : "#fcf9f4"
-    readonly property color ink: dark ? "#f5eff7" : "#282230"
-    readonly property color muted: dark ? "#bdb1c4" : "#675d70"
-    readonly property color rule: dark ? "#3c3643" : "#e4dbe2"
-    readonly property var accentNames: ["Сирень", "Пудра", "Абрикос", "Мята"]
-    readonly property var accents: ["#d8c5fb", "#f1bbd2", "#f3c397", "#a7dbcf"]
-    readonly property color accent: accents[backend.accent]
-    readonly property color accentInk: "#302342"
-    readonly property color tint: Qt.tint(panel, Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.13 : 0.5))
+    readonly property color paper: dark ? "#141518" : "#f6f6f8"
+    readonly property color panel: dark ? "#1b1c20" : "#ffffff"
+    readonly property color sidebar: dark ? "#18191d" : "#eeeef2"
+    readonly property color ink: dark ? "#f4f4f6" : "#202127"
+    readonly property color muted: dark ? "#abaeb7" : "#626573"
+    readonly property color rule: dark ? "#32343b" : "#dedfe6"
+    readonly property var accentNames: ["Сирень", "Пудра", "Абрикос", "Мята", "Индиго", "Небо",
+                                        "Бирюза", "Шалфей", "Мёд", "Коралл", "Слива", "Сланец"]
+    readonly property var accents: ["#b9a3f4", "#e9a5c4", "#edb07f", "#83c6b5", "#7778dd", "#75ade9",
+                                    "#48baaa", "#9abc76", "#e3bb61", "#e8867c", "#a477bf", "#8a9ab8"]
+    readonly property color accent: backend.accent < 0 ? backend.customColor : accents[backend.accent]
+    readonly property color primaryFill: dark ? Qt.tint("#c8c8d0", Qt.rgba(accent.r, accent.g, accent.b, 0.50))
+                                             : Qt.tint("#292934", Qt.rgba(accent.r, accent.g, accent.b, 0.25))
+    readonly property color accentInk: dark ? "#17181d" : "#ffffff"
+    readonly property color tint: Qt.tint(panel, Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.18 : 0.24))
+    readonly property color selection: Qt.tint(panel, Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.29 : 0.40))
     readonly property string serif: Qt.platform.os === "windows" ? "Georgia" : "DejaVu Serif"
-    readonly property int motion: backend.motion ? 220 : 0
-    readonly property int revealTime: backend.motion ? 480 : 0
+    readonly property int motion: backend.motion ? 200 : 0
+    readonly property int revealTime: backend.motion ? 330 : 0
     color: paper
     palette.window: panel
     palette.base: panel
@@ -65,11 +72,11 @@ ApplicationWindow {
             font: action.font
         }
         background: Rectangle {
-            radius: 16
+            radius: 9
             border.width: action.visualFocus || !action.primary ? 1 : 0
             border.color: action.visualFocus ? win.ink : win.rule
             color: action.primary
-                   ? (action.down ? Qt.darker(win.accent, 1.12) : win.accent)
+                   ? (action.down ? Qt.lighter(win.primaryFill, 1.13) : win.primaryFill)
                    : (action.down || action.hovered ? win.tint : win.panel)
             Behavior on color { ColorAnimation { duration: win.motion } }
         }
@@ -80,21 +87,25 @@ ApplicationWindow {
         property bool selected: false
         property bool hovered: false
         property bool focused: false
+        property bool framed: true
         Rectangle {
             anchors.fill: parent
-            radius: 15
-            color: reveal.hovered ? win.tint : win.panel
+            radius: 9
+            color: reveal.hovered ? win.tint : reveal.framed ? win.panel : "transparent"
+            border.width: reveal.framed || reveal.focused ? 1 : 0
             border.color: reveal.focused ? win.accent : win.rule
             Behavior on color { ColorAnimation { duration: win.motion } }
         }
         Rectangle {
+            objectName: "selectionFill"
+            anchors.verticalCenter: parent.verticalCenter
             height: parent.height
             width: reveal.selected ? parent.width : 0
-            opacity: reveal.selected ? 1 : 0
-            radius: 15
-            color: win.accent
+            opacity: width > 0 ? 1 : 0
+            radius: Math.min(9, width / 2)
+            color: win.selection
             Behavior on width { NumberAnimation { duration: win.revealTime; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: win.motion } }
+            Behavior on color { ColorAnimation { duration: win.motion } }
         }
     }
 
@@ -126,7 +137,7 @@ ApplicationWindow {
         padding: 12
         background: Rectangle {
             color: field.activeFocus ? win.tint : win.paper
-            radius: 15
+            radius: 10
             border.color: field.activeFocus ? win.accent : win.rule
             Behavior on color { ColorAnimation { duration: win.motion } }
         }
@@ -152,183 +163,220 @@ ApplicationWindow {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 16
-        spacing: 14
+        spacing: 0
 
         Rectangle {
             Layout.fillHeight: true
-            Layout.preferredWidth: 244
-            color: win.panel
-            border.color: win.rule
-            radius: 25
+            Layout.preferredWidth: 228
+            color: win.sidebar
             Behavior on color { ColorAnimation { duration: win.motion } }
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 22
-                spacing: 14
-
+                anchors.margins: 18
+                spacing: 12
                 RowLayout {
                     Layout.fillWidth: true
-                    Image { source: "app-icon.svg"; Layout.preferredWidth: 30; Layout.preferredHeight: 30 }
+                    spacing: 8
+                    Image { source: "app-icon.svg"; Layout.preferredWidth: 28; Layout.preferredHeight: 28 }
                     Body { text: "Верни рабочий стол"; font.weight: Font.DemiBold }
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: win.rule }
-                Body { text: "Рабочие наборы"; color: win.muted; font.pixelSize: 13 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Body { text: "Рабочие наборы"; color: win.muted; font.pixelSize: 13; Layout.fillWidth: true }
+                    Action {
+                        text: "+"; leftPadding: 9; rightPadding: 9
+                        Accessible.name: "Создать набор"
+                        onClicked: nameSheet.begin("new")
+                    }
+                }
                 ListView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    spacing: 4
+                    spacing: 3
                     model: backend.groups
                     ScrollBar.vertical: ScrollBar { }
                     delegate: ItemDelegate {
                         id: entry
                         required property var modelData
                         width: ListView.view.width
-                        height: 40
-                        leftPadding: 12 + Math.min(modelData.depth, 5) * 13
-                        rightPadding: 10
+                        height: 38
+                        leftPadding: 10 + Math.min(modelData.depth, 5) * 12
+                        rightPadding: 8
                         readonly property bool selected: backend.selected === modelData.key
                         onClicked: backend.select(modelData.key)
                         contentItem: Body {
-                            text: (entry.modelData.depth ? "↳  " : "") + entry.modelData.name
+                            text: (entry.modelData.depth ? "↳  " : "◇  ") + entry.modelData.name
                             font.weight: entry.selected ? Font.DemiBold : Font.Normal
-                            color: entry.selected ? win.accentInk : win.ink
                             verticalAlignment: Text.AlignVCenter
                         }
-                        background: Reveal { selected: entry.selected; hovered: entry.hovered; focused: entry.visualFocus }
+                        background: Reveal {
+                            framed: false
+                            selected: entry.selected
+                            hovered: entry.hovered
+                            focused: entry.visualFocus
+                        }
                     }
-                }
-                Action {
-                    Layout.fillWidth: true
-                    text: "+ Набор"
-                    onClicked: nameSheet.begin("new")
                 }
                 Rectangle { Layout.fillWidth: true; height: 1; color: win.rule }
                 Action { Layout.fillWidth: true; text: "Настройки"; onClicked: settingsSheet.open() }
                 Action { Layout.fillWidth: true; text: "О приложении"; onClicked: aboutSheet.open() }
             }
         }
+        Rectangle { Layout.fillHeight: true; width: 1; color: win.rule }
 
         Item {
             id: stage
             Layout.fillWidth: true
             Layout.fillHeight: true
+            readonly property var entries: backend.resources.map((item, index) => ({ item, index }))
+            readonly property var filtered: entries.filter(row =>
+                (row.item.name + " " + row.item.target).toLocaleLowerCase().includes(resourceSearch.text.trim().toLocaleLowerCase()))
+
+            Shortcut {
+                sequence: "Ctrl+K"
+                enabled: !addSheet.opened && !settingsSheet.opened && !aboutSheet.opened && !nameSheet.opened && !confirmGroup.opened
+                onActivated: { resourceSearch.forceActiveFocus(); resourceSearch.selectAll() }
+            }
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 22
-                spacing: 15
-                Rectangle {
+                width: Math.min(parent.width - 62, 820)
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.topMargin: 27
+                anchors.bottomMargin: 24
+                spacing: 14
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: hero.implicitHeight + 44
-                    color: win.tint
-                    radius: 25
-                    border.color: win.rule
-                    Behavior on color { ColorAnimation { duration: win.motion } }
-                    ColumnLayout {
-                        id: hero
-                        anchors.fill: parent
-                        anchors.margins: 22
-                        spacing: 13
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Body { Layout.fillWidth: true; text: backend.trail || "Рабочий стол"; color: win.muted }
-                            Action {
-                                text: "+ Тема"; enabled: backend.selected !== ""
-                                onClicked: nameSheet.begin("topic")
-                            }
-                            Action {
-                                text: "⋯"; enabled: backend.selected !== ""
-                                Accessible.name: "Действия с набором или темой"
-                                onClicked: groupMenu.popup()
-                                SoftMenu {
-                                    id: groupMenu
-                                    SoftMenuItem { text: "Переименовать"; onTriggered: nameSheet.begin("rename") }
-                                    SoftMenuItem { text: "Удалить"; onTriggered: confirmGroup.open() }
-                                }
-                            }
-                        }
-                        Body {
-                            Layout.fillWidth: true
-                            text: backend.title
-                            font.family: win.serif
-                            font.pixelSize: 54
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Body {
-                                Layout.fillWidth: true
-                                text: backend.resources.length ? "Ресурсов в теме: " + backend.resources.length : "Ресурсы"
-                                color: win.muted
-                            }
-                            Action { text: "+ Добавить"; enabled: backend.selected !== ""; onClicked: addSheet.begin() }
-                            Action {
-                                text: "Открыть всё"
-                                primary: true
-                                enabled: backend.resources.length > 0
-                                onClicked: backend.openResources(-1)
-                            }
+                    Body { Layout.fillWidth: true; text: backend.trail || "Рабочие наборы"; color: win.muted; font.pixelSize: 13 }
+                    Action {
+                        text: "+ Тема"; enabled: backend.selected !== ""
+                        onClicked: nameSheet.begin("topic")
+                    }
+                    Action {
+                        text: "⋯"; enabled: backend.selected !== ""
+                        Accessible.name: "Действия с набором или темой"
+                        onClicked: groupMenu.popup()
+                        SoftMenu {
+                            id: groupMenu
+                            SoftMenuItem { text: "Переименовать"; onTriggered: nameSheet.begin("rename") }
+                            SoftMenuItem { text: "Удалить"; onTriggered: confirmGroup.open() }
                         }
                     }
                 }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Body {
+                        Layout.fillWidth: true
+                        text: backend.title
+                        font.pixelSize: 36
+                        font.weight: Font.DemiBold
+                    }
+                    Action { text: "+ Добавить"; enabled: backend.selected !== ""; onClicked: addSheet.begin() }
+                    Action {
+                        text: "Открыть всё"
+                        primary: true
+                        enabled: backend.resources.length > 0
+                        onClicked: backend.openResources(-1)
+                    }
+                }
+
+                Field {
+                    id: resourceSearch
+                    objectName: "resourceSearch"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    leftPadding: 36
+                    rightPadding: 76
+                    placeholderText: "Поиск в этой теме"
+                    Accessible.name: "Поиск в этой теме"
+                    onAccepted: {
+                        if (stage.filtered.length > 0 && text.trim())
+                            backend.openResources(stage.filtered[0].index)
+                    }
+                    Keys.onEscapePressed: clear()
+                    Body { text: "⌕"; color: win.muted; font.pixelSize: 23; x: 12; anchors.verticalCenter: parent.verticalCenter }
+                    Action {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: resourceSearch.text ? "×" : "Ctrl+K"
+                        topPadding: 4; bottomPadding: 4; leftPadding: 7; rightPadding: 7
+                        Accessible.name: resourceSearch.text ? "Очистить поиск" : "Поиск"
+                        onClicked: { resourceSearch.clear(); resourceSearch.forceActiveFocus() }
+                    }
+                }
+                Body {
+                    Layout.fillWidth: true
+                    text: resourceSearch.text ? "Найдено: " + stage.filtered.length : "Ресурсы · " + stage.entries.length
+                    color: win.muted
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+
                 Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Rectangle {
+                        id: resourceSurface
+                        width: parent.width
+                        height: Math.min(parent.height, stage.filtered.length ? stage.filtered.length * 59 + 12 : 210)
+                        radius: 14
+                        color: win.panel
+                        border.color: win.rule
+                    }
 
-                    GridView {
+                    ListView {
                         id: cards
-                        anchors.fill: parent
+                        anchors.fill: resourceSurface
+                        anchors.margins: 7
                         clip: true
-                        cellWidth: width / (width >= 700 ? 3 : 2)
-                        cellHeight: 112
-                        model: backend.resources
-                        add: Transition {
-                            ParallelAnimation {
-                                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: win.motion }
-                                NumberAnimation { property: "scale"; from: 0.94; to: 1; duration: win.motion; easing.type: Easing.OutCubic }
-                            }
-                        }
+                        spacing: 2
+                        model: stage.filtered
                         ScrollBar.vertical: ScrollBar { }
-                        delegate: Rectangle {
+                        delegate: ItemDelegate {
                             id: card
-                            required property int index
                             required property var modelData
-                            width: cards.cellWidth - 10
-                            height: cards.cellHeight - 10
-                            radius: 22
-                            scale: cardOpen.down && win.motion ? 0.98 : 1
-                            Behavior on scale { NumberAnimation { duration: win.motion / 2; easing.type: Easing.OutCubic } }
-                            color: cardOpen.hovered ? win.tint : win.panel
-                            border.color: win.rule
-                            Behavior on color { ColorAnimation { duration: win.motion } }
-
-                            Button {
-                                id: cardOpen
-                                anchors.fill: parent
-                                Accessible.name: "Открыть " + card.modelData.name
-                                background: null
-                                onClicked: backend.openResources(card.index)
+                            readonly property var resource: modelData.item
+                            width: ListView.view.width
+                            height: 57
+                            leftPadding: 10
+                            rightPadding: 12
+                            Accessible.name: "Открыть " + resource.name
+                            onClicked: backend.openResources(modelData.index)
+                            background: Rectangle {
+                                radius: 9
+                                color: card.hovered || card.visualFocus ? win.tint : "transparent"
+                                Behavior on color { ColorAnimation { duration: win.motion } }
                             }
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: 13
-                                spacing: 11
+                            contentItem: RowLayout {
+                                spacing: 12
                                 Rectangle {
-                                    width: 38; height: 38; radius: 12; color: win.accent
+                                    Layout.preferredWidth: 34
+                                    Layout.preferredHeight: 34
+                                    radius: 9
+                                    color: win.tint
                                     Body {
                                         anchors.centerIn: parent
-                                        text: card.modelData.name.substring(0, 1).toUpperCase()
-                                        color: "#23251b"
                                         font.weight: Font.DemiBold
+                                        text: ({"Сайт": "↗", "Папка": "▱", "Файл": "≡"})[card.resource.kind]
+                                              || card.resource.name.slice(0, 1).toUpperCase()
                                     }
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 4
-                                    Body { Layout.fillWidth: true; text: card.modelData.name; font.weight: Font.DemiBold }
-                                    Body { Layout.fillWidth: true; text: card.modelData.kind; color: win.muted; font.pixelSize: 13 }
+                                    spacing: 2
+                                    Body { Layout.fillWidth: true; text: card.resource.name; font.weight: Font.DemiBold }
+                                    Body {
+                                        Layout.fillWidth: true
+                                        text: card.resource.kind === "Приложение" ? "Приложение из меню «Пуск»" : card.resource.target
+                                        color: win.muted
+                                        font.pixelSize: 12
+                                    }
                                 }
+                                Body { text: card.resource.kind; color: win.muted; font.pixelSize: 12 }
                                 Action {
                                     text: "⋯"; leftPadding: 8; rightPadding: 8
                                     Accessible.name: "Действия с ресурсом"
@@ -337,63 +385,75 @@ ApplicationWindow {
                                         id: resourceMenu
                                         SoftMenuItem {
                                             text: "Изменить"
-                                            visible: card.modelData.kind !== "Приложение"
+                                            visible: card.resource.kind !== "Приложение"
                                             height: visible ? implicitHeight : 0
-                                            onTriggered: addSheet.beginEdit(card.index, card.modelData)
+                                            onTriggered: addSheet.beginEdit(card.modelData.index, card.resource)
                                         }
-                                        SoftMenuItem { text: "Убрать из темы"; onTriggered: backend.removeResource(card.index) }
+                                        SoftMenuItem { text: "Убрать из темы"; onTriggered: backend.removeResource(card.modelData.index) }
                                     }
                                 }
                             }
                         }
                     }
-
-                    SequentialAnimation {
+                    NumberAnimation {
                         id: switchCards
-                        PropertyAction { target: cards; property: "opacity"; value: win.motion ? 0.35 : 1 }
-                        NumberAnimation { target: cards; property: "opacity"; to: 1; duration: win.motion; easing.type: Easing.OutCubic }
+                        target: cards
+                        property: "opacity"
+                        from: win.motion ? 0.52 : 1
+                        to: 1
+                        duration: win.motion
+                        easing.type: Easing.OutCubic
                     }
                     Connections {
                         target: backend
                         function onChanged() {
                             if (stage.lastTopic !== backend.selected) {
                                 stage.lastTopic = backend.selected
+                                resourceSearch.clear()
                                 switchCards.restart()
                             }
                         }
                     }
-                    Column {
-                        anchors.centerIn: parent
-                        width: Math.min(parent.width, 360)
-                        spacing: 12
-                        visible: backend.resources.length === 0
+                    ColumnLayout {
+                        anchors.centerIn: resourceSurface
+                        width: Math.min(resourceSurface.width - 32, 360)
+                        spacing: 8
+                        visible: stage.filtered.length === 0
                         Body {
-                            width: parent.width; horizontalAlignment: Text.AlignHCenter
-                            text: backend.selected ? "С чего начнём?" : "Создай первый набор"
-                            font.family: win.serif; font.pixelSize: 29
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            text: resourceSearch.text ? "Ничего не найдено" : backend.selected ? "В теме пока пусто" : "Создай рабочий набор"
+                            font.pixelSize: 20
+                            font.weight: Font.DemiBold
                         }
                         Body {
-                            width: parent.width; horizontalAlignment: Text.AlignHCenter
-                            text: backend.selected ? "Добавь программы или перетащи сюда файлы." : "Собери всё нужное для одного занятия."
-                            elide: Text.ElideNone
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            text: resourceSearch.text ? "Попробуй другое название или путь." : "Добавь программы, ссылки или перетащи сюда файлы."
                             wrapMode: Text.Wrap
+                            elide: Text.ElideNone
                             color: win.muted
+                        }
+                        Action {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.topMargin: 8
+                            visible: !resourceSearch.text
+                            text: backend.selected ? "Добавить ресурс" : "Создать набор"
+                            onClicked: backend.selected ? addSheet.begin() : nameSheet.begin("new")
                         }
                     }
                     DropArea {
                         anchors.fill: parent
                         enabled: backend.selected !== ""
-                        onDropped: drop => {
-                            if (drop.hasUrls)
-                                backend.dropFiles(drop.urls)
-                        }
+                        onDropped: drop => { if (drop.hasUrls) backend.dropFiles(drop.urls) }
                         Rectangle {
                             anchors.fill: parent
                             visible: parent.containsDrag
-                            color: "#4080aa60"
+                            color: win.tint
+                            opacity: 0.6
                             border.color: win.accent
                             border.width: 2
-                            radius: 18
+                            radius: 14
                         }
                     }
                 }
@@ -471,7 +531,9 @@ ApplicationWindow {
         enter: Transition {
             ParallelAnimation {
                 NumberAnimation { property: "opacity"; from: 0; to: 1; duration: win.motion }
-                NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: win.motion; easing.type: Easing.OutCubic }
+                NumberAnimation { property: "x"; from: addSheet.parent.width - addSheet.width + 9
+                                  to: addSheet.parent.width - addSheet.width - 18
+                                  duration: win.motion; easing.type: Easing.OutCubic }
             }
         }
         property bool manual: false
@@ -541,6 +603,7 @@ ApplicationWindow {
                 ScrollBar.vertical: ScrollBar { }
                 delegate: CheckDelegate {
                     id: appEntry
+                    objectName: "catalogRow"
                     required property var modelData
                     width: ListView.view.width
                     height: 52
@@ -555,12 +618,12 @@ ApplicationWindow {
                         Rectangle {
                             Layout.preferredWidth: 29; Layout.preferredHeight: 29
                             radius: 9
-                            color: appEntry.checked ? win.accentInk : win.tint
+                            color: appEntry.checked ? win.primaryFill : win.tint
                             Behavior on color { ColorAnimation { duration: win.motion } }
                             Body {
                                 anchors.centerIn: parent
                                 text: appEntry.text.slice(0, 1).toUpperCase()
-                                color: appEntry.checked ? win.accent : win.ink
+                                color: appEntry.checked ? win.accentInk : win.ink
                                 font.pixelSize: 13
                                 font.weight: Font.DemiBold
                             }
@@ -568,14 +631,14 @@ ApplicationWindow {
                         Body {
                             Layout.fillWidth: true
                             text: appEntry.text
-                            color: appEntry.checked ? win.accentInk : win.ink
+                            color: win.ink
                         }
                         Rectangle {
                             Layout.preferredWidth: 22; Layout.preferredHeight: 22
                             radius: 11
-                            color: appEntry.checked ? win.accentInk : "transparent"
-                            border.color: appEntry.checked ? win.accentInk : win.muted
-                            Body { anchors.centerIn: parent; text: "✓"; color: win.accent; visible: appEntry.checked }
+                            color: appEntry.checked ? win.primaryFill : "transparent"
+                            border.color: appEntry.checked ? win.primaryFill : win.muted
+                            Body { anchors.centerIn: parent; text: "✓"; color: win.accentInk; visible: appEntry.checked }
                         }
                     }
                     background: Reveal { selected: appEntry.checked; hovered: appEntry.hovered; focused: appEntry.visualFocus }
@@ -676,7 +739,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 460
         contentItem: ColumnLayout {
-            spacing: 16
+            spacing: 14
             RowLayout {
                 Layout.fillWidth: true
                 Body { Layout.fillWidth: true; text: "Настройки"; font.family: win.serif; font.pixelSize: 33 }
@@ -697,35 +760,76 @@ ApplicationWindow {
                 }
             }
             Body { text: "Акцент"; font.weight: Font.DemiBold }
-            RowLayout {
-                Layout.fillWidth: true
+            GridLayout {
+                id: colorGrid
+                objectName: "colorGrid"
+                Layout.alignment: Qt.AlignHCenter
+                columns: 6
+                columnSpacing: 13
+                rowSpacing: 10
                 Repeater {
                     model: win.accentNames
-                    Action {
+                    Button {
                         id: swatch
                         required property int index
                         required property string modelData
-                        Layout.fillWidth: true
+                        readonly property bool chosen: backend.accent === index
+                        Layout.minimumWidth: 45
+                        Layout.maximumWidth: 45
+                        Layout.minimumHeight: 45
+                        Layout.maximumHeight: 45
+                        padding: 5
+                        leftPadding: 5; rightPadding: 5; topPadding: 5; bottomPadding: 5
                         text: modelData
-                        Accessible.description: backend.accent === index ? "Выбранный акцент" : ""
-                        leftPadding: 8
-                        rightPadding: 8
-                        contentItem: Body {
-                            text: swatch.text
-                            color: win.accentInk
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            font.weight: backend.accent === swatch.index ? Font.Bold : Font.Normal
-                        }
+                        objectName: "accent-" + index
+                        Accessible.name: "Цвет " + text
+                        Accessible.description: chosen ? "Выбран" : ""
+                        ToolTip.text: text
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
                         background: Rectangle {
-                            radius: 15
+                            color: "transparent"
+                            radius: width / 2
+                            border.width: swatch.chosen || swatch.visualFocus || swatch.hovered ? 2 : 0
+                            border.color: win.ink
+                        }
+                        contentItem: Rectangle {
+                            radius: width / 2
                             color: win.accents[swatch.index]
-                            border.width: backend.accent === swatch.index || swatch.visualFocus ? 2 : 0
-                            border.color: win.accentInk
+                            scale: swatch.down && win.motion ? 0.9 : 1
+                            Behavior on scale { NumberAnimation { duration: win.motion / 2 } }
+                            Body {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                color: "#22222b"
+                                visible: swatch.chosen
+                                font.weight: Font.Bold
+                            }
                         }
                         onClicked: backend.setAccent(index)
                     }
                 }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Rectangle {
+                    Layout.preferredWidth: 16; Layout.preferredHeight: 16
+                    radius: 8; color: win.accent; border.color: win.rule
+                }
+                Body {
+                    Layout.fillWidth: true
+                    text: backend.accent < 0 ? backend.customColor.toUpperCase() : win.accentNames[backend.accent]
+                    color: win.muted
+                }
+                Action {
+                    text: "Свой цвет…"
+                    onClicked: { colorDialog.selectedColor = win.accent; colorDialog.open() }
+                }
+            }
+            ColorDialog {
+                id: colorDialog
+                title: "Свой акцентный цвет"
+                onAccepted: backend.chooseColor(String(selectedColor))
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: win.rule }
             RowLayout {
