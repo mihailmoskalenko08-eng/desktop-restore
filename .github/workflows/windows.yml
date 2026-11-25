@@ -36,6 +36,16 @@ jobs:
             throw 'The desktop application did not exit after its startup check.'
           }
           if ($process.ExitCode -ne 0) { throw "Desktop startup failed: $($process.ExitCode)" }
+      - name: Include third-party licenses
+        run: |
+          $folder = New-Item -ItemType Directory -Force -Path .\dist\DesktopRestore\Licenses
+          $qt = 'https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES'
+          foreach ($file in @('LGPL-3.0-only.txt', 'GPL-3.0-only.txt')) {
+            Invoke-WebRequest "$qt/$file" -OutFile (Join-Path $folder.FullName $file)
+          }
+          $pythonHome = python -c "import sys; print(sys.base_prefix)"
+          Copy-Item (Join-Path $pythonHome 'LICENSE.txt') (Join-Path $folder.FullName 'Python.txt')
+          Copy-Item ThirdParty.txt $folder.FullName
       - name: Build installer
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
