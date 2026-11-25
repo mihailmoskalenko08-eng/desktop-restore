@@ -1,5 +1,5 @@
 ﻿#ifndef AppVersion
-  #define AppVersion "0.3.0"
+  #define AppVersion "0.4.0"
 #endif
 
 [Setup]
@@ -29,11 +29,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Files]
+Source: "app-icon.ico"; DestDir: "{app}"; DestName: "DesktopRestore-v04.ico"; Flags: ignoreversion
 Source: "dist\DesktopRestore\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"
-Name: "{autodesktop}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; Tasks: desktopicon
+Name: "{group}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"
+Name: "{autodesktop}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\DesktopRestore.exe"; Description: "{cm:LaunchProgram,Верни рабочий стол}"; Flags: nowait postinstall skipifsilent
