@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the installer as v0.2.0
+        description: Publish the installer as v0.3.0
         type: boolean
         default: false
   push:
@@ -24,8 +24,12 @@ jobs:
           architecture: x64
       - name: Install build dependencies
         run: python -m pip install -r requirements.txt pyinstaller==6.14.2
+      - name: Render Windows icon
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python build_icon.py
       - name: Build desktop application
-        run: python -m PyInstaller --noconfirm --windowed --name DesktopRestore --add-data "Main.qml:." app.py
+        run: python -m PyInstaller --noconfirm --windowed --name DesktopRestore --icon app-icon.ico --hidden-import PySide6.QtSvg --add-data "Main.qml:." --add-data "app-icon.svg:." app.py
       - name: Check the bundled application starts
         run: |
           $env:QT_QPA_PLATFORM = 'offscreen'
@@ -93,5 +97,5 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             gh release create "$GITHUB_REF_NAME" DesktopRestore-Setup.exe --verify-tag --generate-notes
           else
-            gh release create v0.2.0 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
+            gh release create v0.3.0 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
           fi
