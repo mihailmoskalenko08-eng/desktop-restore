@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the installer as v0.3.0
+        description: Publish the installer as v0.4.0
         type: boolean
         default: false
   push:
@@ -24,6 +24,12 @@ jobs:
           architecture: x64
       - name: Install build dependencies
         run: python -m pip install -r requirements.txt pyinstaller==6.14.2
+      - name: Test Qt interaction
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+          PYTHONPATH: .
+        run: python tests/ui_smoke.py
       - name: Render Windows icon
         env:
           QT_QPA_PLATFORM: offscreen
@@ -60,11 +66,30 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag') { & $iscc "/DAppVersion=$($env:GITHUB_REF_NAME.TrimStart('v'))" setup.iss }
           else { & $iscc setup.iss }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test silent installation and startup
+      - name: Test installation, upgrade and shortcuts
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'DesktopRestore-InstallTest'
-          $installer = Start-Process -FilePath .\dist\DesktopRestore-Setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/DIR="' + $destination + '"') -Wait -PassThru
-          if ($installer.ExitCode -ne 0) { throw "Installation failed: $($installer.ExitCode)" }
+          $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=desktopicon', ('/DIR="' + $destination + '"'))
+          $old = Join-Path $env:RUNNER_TEMP 'DesktopRestore-v03-Setup.exe'
+          $oldUrl = 'https://github.com/mihailmoskalenko08-eng/desktop-restore/releases/download/v0.3.0/DesktopRestore-Setup.exe'
+          Invoke-WebRequest $oldUrl -OutFile $old
+          $previous = Start-Process -FilePath $old -ArgumentList $arguments -Wait -PassThru
+          if ($previous.ExitCode -ne 0) { throw "Previous installation failed: $($previous.ExitCode)" }
+          $config = Join-Path $env:LOCALAPPDATA 'DesktopRestore'
+          New-Item -ItemType Directory -Force -Path $config | Out-Null
+          $data = Join-Path $config 'workspaces.json'
+          '{"version":1,"selected":"legacy","groups":[{"id":"legacy","name":"Legacy workspace","items":[],"topics":[]}]}' | Set-Content -Path $data -Encoding utf8NoBOM
+          $hash = (Get-FileHash $data).Hash
+          $installer = Start-Process -FilePath .\dist\DesktopRestore-Setup.exe -ArgumentList $arguments -Wait -PassThru
+          if ($installer.ExitCode -ne 0) { throw "Upgrade failed: $($installer.ExitCode)" }
+          if ((Get-FileHash $data).Hash -ne $hash) { throw 'Upgrade altered the workspace data.' }
+          $icon = Join-Path $destination 'DesktopRestore-v04.ico'
+          if (!(Test-Path $icon)) { throw 'Custom icon was not installed.' }
+          $link = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Верни рабочий стол.lnk'
+          if (!(Test-Path $link)) { throw 'Desktop shortcut was not created.' }
+          $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
+          if (($shortcut.IconLocation -split ',')[0] -ne $icon) { throw "Incorrect shortcut icon: $($shortcut.IconLocation)" }
+          if ($shortcut.TargetPath -ne (Join-Path $destination 'DesktopRestore.exe')) { throw 'Desktop shortcut missing its target.' }
           $env:QT_QPA_PLATFORM = 'offscreen'
           $env:QT_QUICK_BACKEND = 'software'
           $app = Start-Process -FilePath (Join-Path $destination 'DesktopRestore.exe') -ArgumentList '--smoke-test' -PassThru
@@ -97,5 +122,5 @@ jobs:
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             gh release create "$GITHUB_REF_NAME" DesktopRestore-Setup.exe --verify-tag --generate-notes
           else
-            gh release create v0.3.0 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
+            gh release create v0.4.0 DesktopRestore-Setup.exe --target "$GITHUB_SHA" --generate-notes
           fi
