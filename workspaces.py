@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 
-RESOURCE_TYPES = ("Сайт", "Папка", "Файл", "Программа")
+RESOURCE_TYPES = ("Сайт", "Папка", "Файл", "Программа", "Приложение")
 
 
 def new_group(name):
@@ -42,6 +42,9 @@ def validate_target(kind, target):
         address = urlsplit(target)
         if address.scheme not in ("https", "http") or not address.hostname:
             raise ValueError("Укажи полный адрес сайта, начиная с https:// или http://.")
+    elif kind == "Приложение":
+        if any(ord(char) < 32 or char == '"' for char in target):
+            raise ValueError("Неверный идентификатор приложения из меню «Пуск».")
     elif kind in RESOURCE_TYPES:
         path = Path(os.path.expandvars(target)).expanduser()
         if kind == "Папка" and not path.is_dir():
@@ -59,6 +62,13 @@ def launch(item):
     if kind == "Сайт":
         if not webbrowser.open(target, new=2):
             raise OSError("Не удалось открыть браузер.")
+        return
+
+    if kind == "Приложение":
+        if sys.platform != "win32":
+            raise OSError("Приложения из меню «Пуск» открываются в Windows.")
+        explorer = Path(os.environ.get("WINDIR", r"C:\Windows")) / "explorer.exe"
+        subprocess.Popen([str(explorer), "shell:AppsFolder\\" + target])
         return
 
     path = path.resolve()
