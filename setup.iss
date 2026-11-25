@@ -33,19 +33,8 @@ Source: "app-icon.ico"; DestDir: "{app}"; DestName: "DesktopRestore-v04.ico"; Fl
 Source: "dist\DesktopRestore\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"; AfterInstall: SetShortcutIcon('{group}\Верни рабочий стол.lnk')
-Name: "{autodesktop}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"; Tasks: desktopicon; AfterInstall: SetShortcutIcon('{autodesktop}\Верни рабочий стол.lnk')
+Name: "{group}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"
+Name: "{autodesktop}\Верни рабочий стол"; Filename: "{app}\DesktopRestore.exe"; IconFilename: "{app}\DesktopRestore-v04.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\DesktopRestore.exe"; Description: "{cm:LaunchProgram,Верни рабочий стол}"; Flags: nowait postinstall skipifsilent
-
-[Code]
-procedure SetShortcutIcon(const LinkName: String);
-var
-  Shell, Link: Variant;
-begin
-  Shell := CreateOleObject('WScript.Shell');
-  Link := Shell.CreateShortcut(ExpandConstant(LinkName));
-  Link.IconLocation := ExpandConstant('{app}\DesktopRestore-v04.ico') + ',0';
-  Link.Save;
-end;
