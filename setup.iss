@@ -1,5 +1,5 @@
 ﻿#ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 
 [Setup]
@@ -18,6 +18,7 @@ OutputBaseFilename=DesktopRestore-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=app-icon.ico
 UninstallDisplayIcon={app}\DesktopRestore.exe
 
 [Languages]
