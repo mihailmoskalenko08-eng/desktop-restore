@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 
@@ -15,12 +14,14 @@ ApplicationWindow {
     title: "Верни рабочий стол"
 
     readonly property bool dark: backend.dark
-    readonly property color paper: dark ? "#141518" : "#f6f6f8"
-    readonly property color panel: dark ? "#1b1c20" : "#ffffff"
-    readonly property color sidebar: dark ? "#18191d" : "#eeeef2"
-    readonly property color ink: dark ? "#f4f4f6" : "#202127"
-    readonly property color muted: dark ? "#abaeb7" : "#626573"
-    readonly property color rule: dark ? "#32343b" : "#dedfe6"
+    readonly property color paper: dark ? "#141619" : "#f5f4f1"
+    readonly property color panel: dark ? "#1c1f23" : "#fffefa"
+    readonly property color sidebar: dark ? "#191b20" : "#efede8"
+    readonly property color ink: dark ? "#f6f4f2" : "#22252b"
+    readonly property color muted: dark ? "#bfc3cb" : "#575d69"
+    readonly property color rule: dark ? "#3a3e46" : "#dad8d3"
+    readonly property color disabledSurface: dark ? "#292d34" : "#eeece7"
+    readonly property color disabledInk: dark ? "#aab1bd" : "#626873"
     readonly property var accentNames: ["Сирень", "Пудра", "Абрикос", "Мята", "Индиго", "Небо",
                                         "Бирюза", "Шалфей", "Мёд", "Коралл", "Слива", "Сланец"]
     readonly property var accents: ["#b9a3f4", "#e9a5c4", "#edb07f", "#83c6b5", "#7778dd", "#75ade9",
@@ -28,10 +29,10 @@ ApplicationWindow {
     readonly property color accent: backend.accent < 0 ? backend.customColor : accents[backend.accent]
     readonly property color primaryFill: dark ? Qt.tint("#c8c8d0", Qt.rgba(accent.r, accent.g, accent.b, 0.50))
                                              : Qt.tint("#292934", Qt.rgba(accent.r, accent.g, accent.b, 0.25))
-    readonly property color accentInk: dark ? "#17181d" : "#ffffff"
+    readonly property color accentInk: readableInk(primaryFill)
     readonly property color tint: Qt.tint(panel, Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.18 : 0.24))
     readonly property color selection: Qt.tint(panel, Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.29 : 0.40))
-    readonly property string serif: Qt.platform.os === "windows" ? "Georgia" : "DejaVu Serif"
+    font.family: Qt.platform.os === "windows" ? "Segoe UI" : Qt.application.font.family
     readonly property int motion: backend.motion ? 200 : 0
     readonly property int revealTime: backend.motion ? 330 : 0
     color: paper
@@ -42,11 +43,26 @@ ApplicationWindow {
     palette.button: panel
     palette.buttonText: ink
     palette.highlight: accent
-    palette.highlightedText: accentInk
+    palette.highlightedText: readableInk(accent)
     Behavior on color { ColorAnimation { duration: win.motion } }
+
+    function relativeLuminance(shade) {
+        const linear = channel => channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
+        return 0.2126 * linear(shade.r) + 0.7152 * linear(shade.g) + 0.0722 * linear(shade.b)
+    }
+
+    function readableInk(shade) {
+        return relativeLuminance(shade) > 0.179 ? "#000000" : "#ffffff"
+    }
+
+    function hexColor(shade) {
+        const code = channel => Math.round(channel * 255).toString(16).padStart(2, "0")
+        return ("#" + code(shade.r) + code(shade.g) + code(shade.b)).toUpperCase()
+    }
 
     component Body: Text {
         color: win.ink
+        font.family: win.font.family
         font.pixelSize: 15
         textFormat: Text.PlainText
         elide: Text.ElideRight
@@ -55,29 +71,30 @@ ApplicationWindow {
     component Action: Button {
         id: action
         property bool primary: false
-        font.pixelSize: 14
+        readonly property color surface: !enabled ? win.disabledSurface
+            : primary ? (down ? Qt.lighter(win.primaryFill, 1.13) : win.primaryFill)
+                      : (down || hovered ? win.tint : win.panel)
+        font.pixelSize: 15
         font.weight: Font.DemiBold
         leftPadding: 16
         rightPadding: 16
         topPadding: 9
         bottomPadding: 9
-        opacity: enabled ? 1 : 0.45
         scale: down && win.motion ? 0.972 : 1
         Behavior on scale { NumberAnimation { duration: win.motion / 2; easing.type: Easing.OutCubic } }
         contentItem: Body {
             text: action.text
-            color: action.primary ? win.accentInk : win.ink
+            color: !action.enabled ? win.disabledInk : action.primary ? win.readableInk(actionBackground.color) : win.ink
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             font: action.font
         }
         background: Rectangle {
+            id: actionBackground
             radius: 9
-            border.width: action.visualFocus || !action.primary ? 1 : 0
+            border.width: action.visualFocus || !action.primary || !action.enabled ? 1 : 0
             border.color: action.visualFocus ? win.ink : win.rule
-            color: action.primary
-                   ? (action.down ? Qt.lighter(win.primaryFill, 1.13) : win.primaryFill)
-                   : (action.down || action.hovered ? win.tint : win.panel)
+            color: action.surface
             Behavior on color { ColorAnimation { duration: win.motion } }
         }
     }
@@ -131,6 +148,7 @@ ApplicationWindow {
     component Field: TextField {
         id: field
         color: win.ink
+        font.family: win.font.family
         placeholderTextColor: win.muted
         selectByMouse: true
         font.pixelSize: 15
@@ -184,7 +202,7 @@ ApplicationWindow {
                 Rectangle { Layout.fillWidth: true; height: 1; color: win.rule }
                 RowLayout {
                     Layout.fillWidth: true
-                    Body { text: "Рабочие наборы"; color: win.muted; font.pixelSize: 13; Layout.fillWidth: true }
+                    Body { text: "Рабочие наборы"; color: win.muted; font.pixelSize: 14; Layout.fillWidth: true }
                     Action {
                         text: "+"; leftPadding: 9; rightPadding: 9
                         Accessible.name: "Создать набор"
@@ -250,7 +268,7 @@ ApplicationWindow {
                 spacing: 14
                 RowLayout {
                     Layout.fillWidth: true
-                    Body { Layout.fillWidth: true; text: backend.trail || "Рабочие наборы"; color: win.muted; font.pixelSize: 13 }
+                    Body { Layout.fillWidth: true; text: backend.trail || "Рабочие наборы"; color: win.muted; font.pixelSize: 14 }
                     Action {
                         text: "+ Тема"; enabled: backend.selected !== ""
                         onClicked: nameSheet.begin("topic")
@@ -312,7 +330,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: resourceSearch.text ? "Найдено: " + stage.filtered.length : "Ресурсы · " + stage.entries.length
                     color: win.muted
-                    font.pixelSize: 13
+                    font.pixelSize: 14
                     font.weight: Font.DemiBold
                 }
 
@@ -373,10 +391,10 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: card.resource.kind === "Приложение" ? "Приложение из меню «Пуск»" : card.resource.target
                                         color: win.muted
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                     }
                                 }
-                                Body { text: card.resource.kind; color: win.muted; font.pixelSize: 12 }
+                                Body { text: card.resource.kind; color: win.muted; font.pixelSize: 14 }
                                 Action {
                                     text: "⋯"; leftPadding: 8; rightPadding: 8
                                     Accessible.name: "Действия с ресурсом"
@@ -480,7 +498,7 @@ ApplicationWindow {
             spacing: 14
             Body {
                 text: nameSheet.mode === "rename" ? "Переименовать" : nameSheet.mode === "topic" ? "Новая тема" : "Новый набор"
-                font.family: win.serif; font.pixelSize: 28
+                font.weight: Font.DemiBold; font.pixelSize: 28
             }
             Field {
                 id: groupName
@@ -509,7 +527,7 @@ ApplicationWindow {
         ColumnLayout {
             anchors.fill: parent
             spacing: 14
-            Body { text: "Удалить набор или тему?"; font.family: win.serif; font.pixelSize: 24 }
+            Body { text: "Удалить набор или тему?"; font.weight: Font.DemiBold; font.pixelSize: 24 }
             Body { Layout.fillWidth: true; wrapMode: Text.Wrap; elide: Text.ElideNone; text: "Вложенные темы и списки ресурсов исчезнут из приложения." }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
@@ -577,7 +595,7 @@ ApplicationWindow {
                 Body {
                     Layout.fillWidth: true
                     text: addSheet.editing >= 0 ? "Изменить ресурс" : addSheet.manual ? "Добавить вручную" : "Добавить"
-                    font.family: win.serif; font.pixelSize: 32
+                    font.weight: Font.DemiBold; font.pixelSize: 32
                 }
                 Action { text: "×"; Accessible.name: "Закрыть"; onClicked: addSheet.close() }
             }
@@ -624,7 +642,7 @@ ApplicationWindow {
                                 anchors.centerIn: parent
                                 text: appEntry.text.slice(0, 1).toUpperCase()
                                 color: appEntry.checked ? win.accentInk : win.ink
-                                font.pixelSize: 13
+                                font.pixelSize: 14
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -738,11 +756,13 @@ ApplicationWindow {
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: 460
+        opacity: colorSheet.visible ? 0 : 1
+        Overlay.modal: Rectangle { color: colorSheet.visible ? "transparent" : "#55000000" }
         contentItem: ColumnLayout {
             spacing: 14
             RowLayout {
                 Layout.fillWidth: true
-                Body { Layout.fillWidth: true; text: "Настройки"; font.family: win.serif; font.pixelSize: 33 }
+                Body { Layout.fillWidth: true; text: "Настройки"; font.weight: Font.DemiBold; font.pixelSize: 33 }
                 Action { text: "×"; Accessible.name: "Закрыть настройки"; onClicked: settingsSheet.close() }
             }
             Body { text: "Оформление"; font.weight: Font.DemiBold }
@@ -754,6 +774,7 @@ ApplicationWindow {
                         required property var modelData
                         Layout.fillWidth: true
                         text: modelData.name
+                        Layout.preferredWidth: 0
                         primary: backend.appearance === modelData.key
                         onClicked: backend.setAppearance(modelData.key)
                     }
@@ -801,7 +822,7 @@ ApplicationWindow {
                             Body {
                                 anchors.centerIn: parent
                                 text: "✓"
-                                color: "#22222b"
+                                color: win.readableInk(win.accents[swatch.index])
                                 visible: swatch.chosen
                                 font.weight: Font.Bold
                             }
@@ -823,13 +844,8 @@ ApplicationWindow {
                 }
                 Action {
                     text: "Свой цвет…"
-                    onClicked: { colorDialog.selectedColor = win.accent; colorDialog.open() }
+                    onClicked: colorSheet.begin()
                 }
-            }
-            ColorDialog {
-                id: colorDialog
-                title: "Свой акцентный цвет"
-                onAccepted: backend.chooseColor(String(selectedColor))
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: win.rule }
             RowLayout {
@@ -840,6 +856,190 @@ ApplicationWindow {
                     primary: backend.motion
                     onClicked: backend.setMotion(!backend.motion)
                 }
+            }
+        }
+    }
+
+    Sheet {
+        id: colorSheet
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 488
+        z: 5
+        property real hue: 0
+        property real saturation: 0
+        property real brightness: 0
+        property bool writingHex: false
+        readonly property color draft: Qt.hsva(hue, saturation, brightness, 1)
+        readonly property bool validHex: /^#?[0-9a-fA-F]{6}$/.test(hexField.text)
+
+        function begin() {
+            setDraft(win.accent)
+            hexField.text = win.hexColor(win.accent)
+            open()
+        }
+
+        function setDraft(shade) {
+            if (shade.hsvHue >= 0)
+                hue = shade.hsvHue
+            else if (!opened)
+                hue = 0
+            saturation = shade.hsvSaturation
+            brightness = shade.hsvValue
+        }
+
+        function updateFromHex(value) {
+            if (!writingHex && /^#?[0-9a-fA-F]{6}$/.test(value))
+                setDraft(Qt.color(value.startsWith("#") ? value : "#" + value))
+        }
+
+        function syncHex() {
+            writingHex = true
+            hexField.text = win.hexColor(draft)
+            writingHex = false
+        }
+
+        function acceptColor() {
+            if (!validHex)
+                return
+            backend.chooseColor(hexField.text.startsWith("#") ? hexField.text : "#" + hexField.text)
+            close()
+        }
+
+        onOpened: hexField.forceActiveFocus()
+        contentItem: ColumnLayout {
+            spacing: 15
+            RowLayout {
+                Layout.fillWidth: true
+                Body { Layout.fillWidth: true; text: "Свой цвет"; font.pixelSize: 27; font.weight: Font.DemiBold }
+                Action { text: "×"; Accessible.name: "Закрыть выбор цвета"; onClicked: colorSheet.close() }
+            }
+
+            Rectangle {
+                id: colorArea
+                objectName: "colorPad"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 164
+                color: win.rule
+                radius: 10
+                Item {
+                    id: shadeArea
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: "#ffffff" }
+                            GradientStop { position: 1; color: Qt.hsva(colorSheet.hue, 1, 1, 1) }
+                        }
+                    }
+                    Rectangle {
+                        anchors.fill: parent
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: "#00000000" }
+                            GradientStop { position: 1; color: "#000000" }
+                        }
+                    }
+                    Rectangle {
+                        width: 18; height: 18; radius: 9
+                        x: Math.max(0, Math.min(parent.width - width, colorSheet.saturation * parent.width - width / 2))
+                        y: Math.max(0, Math.min(parent.height - height, (1 - colorSheet.brightness) * parent.height - height / 2))
+                        color: "transparent"
+                        border.color: "#ffffff"; border.width: 2
+                        Rectangle {
+                            anchors.fill: parent; anchors.margins: 2
+                            radius: width / 2; color: "transparent"; border.color: "#000000"
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.CrossCursor
+                        function pick(mouse) {
+                            colorSheet.saturation = Math.max(0, Math.min(1, mouse.x / width))
+                            colorSheet.brightness = 1 - Math.max(0, Math.min(1, mouse.y / height))
+                            colorSheet.syncHex()
+                        }
+                        onPressed: mouse => pick(mouse)
+                        onPositionChanged: mouse => { if (pressed) pick(mouse) }
+                    }
+                }
+            }
+            Slider {
+                id: hueSlider
+                objectName: "colorHue"
+                Layout.fillWidth: true
+                from: 0
+                to: 0.999
+                stepSize: 0.005
+                value: colorSheet.hue
+                Accessible.name: "Оттенок"
+                onMoved: {
+                    colorSheet.hue = value
+                    colorSheet.syncHex()
+                }
+                background: Rectangle {
+                    x: hueSlider.leftPadding
+                    y: hueSlider.topPadding + (hueSlider.availableHeight - height) / 2
+                    width: hueSlider.availableWidth
+                    height: 10; radius: 5
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#ff0000" }
+                        GradientStop { position: 1 / 6; color: "#ffff00" }
+                        GradientStop { position: 2 / 6; color: "#00ff00" }
+                        GradientStop { position: 3 / 6; color: "#00ffff" }
+                        GradientStop { position: 4 / 6; color: "#0000ff" }
+                        GradientStop { position: 5 / 6; color: "#ff00ff" }
+                        GradientStop { position: 1; color: "#ff0000" }
+                    }
+                }
+                handle: Rectangle {
+                    width: 20; height: 20; radius: 10
+                    x: hueSlider.leftPadding + hueSlider.visualPosition * (hueSlider.availableWidth - width)
+                    y: hueSlider.topPadding + (hueSlider.availableHeight - height) / 2
+                    color: Qt.hsva(colorSheet.hue, 1, 1, 1)
+                    border.color: hueSlider.activeFocus ? win.ink : win.panel
+                    border.width: 3
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 5
+                    Body { text: "HEX-код"; color: win.muted }
+                    Field {
+                        id: hexField
+                        objectName: "accentHex"
+                        Layout.fillWidth: true
+                        maximumLength: 7
+                        placeholderText: "#7568DA"
+                        Accessible.name: "HEX-код цвета"
+                        onTextChanged: colorSheet.updateFromHex(text)
+                        onAccepted: colorSheet.acceptColor()
+                    }
+                }
+                Rectangle {
+                    objectName: "accentPreview"
+                    Layout.preferredWidth: 140; Layout.preferredHeight: 44
+                    Layout.alignment: Qt.AlignBottom
+                    radius: 10
+                    color: colorSheet.draft
+                    border.color: win.rule
+                    Body { anchors.centerIn: parent; text: "Образец"; color: win.readableInk(parent.color); font.weight: Font.DemiBold }
+                }
+            }
+            Body {
+                visible: !colorSheet.validHex
+                text: "Введи шесть цифр или букв A–F, например #7568DA."
+                color: win.muted
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Action { text: "Отмена"; onClicked: colorSheet.close() }
+                Action { text: "Применить"; primary: true; enabled: colorSheet.validHex; onClicked: colorSheet.acceptColor() }
             }
         }
     }
@@ -856,7 +1056,7 @@ ApplicationWindow {
                 Image { source: "app-icon.svg"; Layout.preferredWidth: 55; Layout.preferredHeight: 55 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Body { Layout.fillWidth: true; text: "Верни рабочий стол"; font.family: win.serif; font.pixelSize: 24 }
+                    Body { Layout.fillWidth: true; text: "Верни рабочий стол"; font.weight: Font.DemiBold; font.pixelSize: 24 }
                     Body { text: "Версия " + backend.version; color: win.muted }
                 }
                 Action { text: "×"; Accessible.name: "Закрыть информацию"; onClicked: aboutSheet.close() }
@@ -868,7 +1068,7 @@ ApplicationWindow {
                 color: win.muted
                 text: backend.dataPath
                 textFormat: TextEdit.PlainText
-                font.pixelSize: 13
+                font.pixelSize: 14
                 wrapMode: TextEdit.WrapAnywhere
                 readOnly: true
                 selectByMouse: true
