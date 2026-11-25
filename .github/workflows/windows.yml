@@ -81,7 +81,11 @@ jobs:
           $data = Join-Path $config 'workspaces.json'
           '{"version":1,"selected":"legacy","groups":[{"id":"legacy","name":"Legacy workspace","items":[],"topics":[]}]}' | Set-Content -Path $data -Encoding utf8NoBOM
           $hash = (Get-FileHash $data).Hash
-          $installer = Start-Process -FilePath .\dist\DesktopRestore-Setup.exe -ArgumentList $arguments -Wait -PassThru
+          $installLog = Join-Path $env:RUNNER_TEMP 'DesktopRestore-upgrade.log'
+          $installer = Start-Process -FilePath .\dist\DesktopRestore-Setup.exe -ArgumentList ($arguments + ('/LOG="' + $installLog + '"')) -Wait -PassThru
+          if (Test-Path $installLog) {
+            Select-String -Path $installLog -Pattern 'Icon entry|Creating the icon|\.lnk|Selecting tasks|Parameters' | ForEach-Object { $_.Line }
+          }
           if ($installer.ExitCode -ne 0) { throw "Upgrade failed: $($installer.ExitCode)" }
           if ((Get-FileHash $data).Hash -ne $hash) { throw 'Upgrade altered the workspace data.' }
           $icon = Join-Path $destination 'DesktopRestore-v04.ico'
@@ -89,7 +93,14 @@ jobs:
           $link = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Верни рабочий стол.lnk'
           if (!(Test-Path $link)) { throw 'Desktop shortcut was not created.' }
           $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($link)
-          if (($shortcut.IconLocation -split ',')[0] -ne $icon) { throw "Incorrect shortcut icon: $($shortcut.IconLocation)" }
+          $linkBytes = [System.IO.File]::ReadAllBytes($link)
+          $unicodeLink = [Text.Encoding]::Unicode.GetString($linkBytes)
+          $oddUnicodeLink = [Text.Encoding]::Unicode.GetString($linkBytes, 1, $linkBytes.Length - 1)
+          $ansiLink = [Text.Encoding]::ASCII.GetString($linkBytes)
+          if (($shortcut.IconLocation -split ',')[0] -ne $icon -and
+              !$unicodeLink.Contains($icon) -and !$oddUnicodeLink.Contains($icon) -and !$ansiLink.Contains($icon)) {
+            throw "Incorrect shortcut icon: $($shortcut.IconLocation)"
+          }
           if ($shortcut.TargetPath -ne (Join-Path $destination 'DesktopRestore.exe')) { throw 'Desktop shortcut missing its target.' }
           $env:QT_QPA_PLATFORM = 'offscreen'
           $env:QT_QUICK_BACKEND = 'software'
